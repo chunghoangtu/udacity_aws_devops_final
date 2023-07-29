@@ -7,16 +7,16 @@
 
 setup:
 	# Create python virtualenv & source it
-	# source ~/.devops/Scripts/activate
-	python3 -m venv ~/.devops
+	# source ~/.devops/bin/activate
+	python -m venv ~/.devops
 
 install:
 	# This should be run from inside a virtualenv
-	pip install --upgrade pip --user &&\
-		pip install -r requirements.txt --user
+	pip install --upgrade pip &&\
+		pip install -r requirements.txt
 	# Install hadolint
-	wget -O /bin/hadolint https://github.com/hadolint/hadolint/releases/download/v1.16.3/hadolint-Linux-x86_64 &&\
-	chmod +x /bin/hadolint
+	wget -O ./hadolint https://github.com/hadolint/hadolint/releases/download/v1.16.3/hadolint-Linux-x86_64 &&\
+	chmod +x ./hadolint
 
 test:
 	# Additional, optional, tests could go here
