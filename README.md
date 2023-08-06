@@ -1,6 +1,8 @@
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/chunghoangtu/udacity_aws_devops_final/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/chunghoangtu/udacity_aws_devops_final/tree/main)
+
 ## Github Repo: https://github.com/chunghoangtu/udacity_aws_devops_final
 
-## pipeline Url: https://app.circleci.com
+## pipeline Url: https://app.circleci.com/pipelines/github/chunghoangtu/udacity_aws_devops_final
 
 ## Setup the Environment
 
@@ -8,9 +10,6 @@
 
 ```bash
 python3 -m pip install --user virtualenv
-# You should have Python 3.7 available in your host.
-# Check the Python path using `which python3`
-# Use a command similar to this one:
 python -m pip install --upgrade pip
 python -m venv ~/.devops
 source ~/.devops/Scripts/activate
@@ -21,8 +20,6 @@ source ~/.devops/Scripts/activate
 ### Running `app.py`
 
 1. Standalone: `python app.py`
-2. Run in Docker: `./run_docker.sh`
-3. Run in Kubernetes: `./run_kubernetes.sh`
 
 ### Kubernetes Steps
 

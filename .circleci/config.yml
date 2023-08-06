@@ -1,0 +1,191 @@
+version: 2.1
+jobs:
+  validate-source:
+    docker:
+      - image: python:3.7.3-stretch
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+          - v1-dependencies-{{ checksum "requirements.txt" }}
+          - v1-dependencies-
+      - run:
+          name: Install Pylint
+          command: pip install pylint
+
+      - run:
+          name: Check Pylint Version
+          command: pylint --version
+      - run:
+          name: install dependencies
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            make install
+            # Install hadolint
+            wget -O /bin/hadolint https://github.com/hadolint/hadolint/releases/download/v1.16.3/hadolint-Linux-x86_64 &&\
+            chmod +x /bin/hadolint
+      - save_cache:
+          paths:
+            - ./venv
+          key: v1-dependencies-{{ checksum "requirements.txt" }}
+      - run:
+          name: run lint
+          command: |
+            . venv/bin/activate
+            make lint 
+      - run:
+          name: run test
+          command: |
+            . venv/bin/activate
+            make test 
+
+  setup-docker-image:
+    docker:
+      - image: docker:17.05.0-ce-git
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --no-cache py-pip=9.0.0-r1
+      - run:
+          name: Build Image
+          command: |
+            docker build -t chunghoangtu/udacity-aws-devops-final:${CIRCLE_WORKFLOW_ID:0:7} .
+      - deploy:
+          name: Push Image
+          command: |
+            docker login --username $DOCKER_USERNAME --password $DOCKER_PASSWORD            
+            docker push "chunghoangtu/udacity-aws-devops-final:${CIRCLE_WORKFLOW_ID:0:7}"
+
+  create-cluster:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run: yum install -y tar gzip
+      - run:
+          name: Install eksctl
+          command: |
+            ARCH=amd64
+            PLATFORM=$(uname -s)_$ARCH
+            curl -sLO "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz"
+            tar -xzf eksctl_$PLATFORM.tar.gz -C /tmp && rm eksctl_$PLATFORM.tar.gz
+            mv /tmp/eksctl /usr/local/bin
+      - run: 
+          name: Check and create cluster
+          command: |
+            if eksctl get cluster  --name "tuchung-uda-final-eksctl" --region=us-east-1
+            then
+              echo "Cluster already exist"
+            else
+              eksctl create cluster --name "tuchung-uda-final-eksctl" --region=us-east-1 --zones=us-east-1a,us-east-1b,us-east-1c
+            fi
+
+  deploy-application:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run: yum install -y tar gzip
+      - run:
+          name: Install kubectl
+          command: |
+            curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
+            install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+      - run:
+          name: Connect kubectl to AWS
+          command: |
+            aws eks update-kubeconfig --region us-east-1 --name tuchung-uda-final-eksctl
+      - run:
+          name: Create deployment
+          command: |
+            kubectl create deployment udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment --image="chunghoangtu/udacity-aws-devops-final:${CIRCLE_WORKFLOW_ID:0:7}" --port 80
+      - run:
+          name: Expose deployment
+          command: |
+            kubectl expose deployment udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment --type=LoadBalancer --port=80
+            # Waiting until its done
+            sleep 1m
+      - run:
+          name: Extract IP address 
+          command: |
+            cd .circleci
+            
+            ip_address=$(kubectl get services udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment --output jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            echo $ip_address >> ip_address.txt
+      - persist_to_workspace:
+          root: ~/
+          paths:
+            - project/.circleci/ip_address.txt
+
+  smoke-test:
+    docker:
+      - image: python:3.7.3-stretch
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: Run smoke test
+          command: |
+              cd .circleci            
+              export APP_IP=$(cat ip_address.txt)              
+              export APP_ENDPOINT="http://${APP_IP}/home"
+              echo ${APP_ENDPOINT} 
+              sleep 60s
+              curl ${APP_ENDPOINT} > test.txt
+              if cat test.txt | grep "Welcome"
+              then
+                exit 0
+              else
+                exit 1
+              fi
+
+  cleanup:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run: yum install -y tar gzip
+      - run:
+          name: Install kubectl
+          command: |
+            curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
+            install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+      - run:
+          name: Connect kubectl to AWS
+          command: |
+            aws eks update-kubeconfig --region us-east-1 --name tuchung-uda-final-eksctl
+      - run:
+          name: Cleanup things in kubectl
+          command: |
+            # Cleanup services
+            kubectl get services | grep udacity-aws-devops-final > temp.txt            
+            sed 's/ .*//' temp.txt > old_services.txt 
+            SERVICE=udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment
+            kubectl delete service $(cat old_services.txt | sed 's/'$SERVICE'//g' | sed -r '/^\s*$/d')
+
+            # Cleanup deployment
+            kubectl get deploy | grep udacity-aws-devops-final > temp.txt
+            sed 's/ .*//' temp.txt > old_deploys.txt
+            DEPLOYMENT=udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment
+            kubectl delete deploy $(cat old_deploys.txt | sed 's/'$DEPLOYMENT'//g' | sed -r '/^\s*$/d')
+
+workflows:
+  my-workflow:
+    jobs:
+      - validate-source
+      - setup-docker-image:
+          requires: [validate-source]
+      - create-cluster:
+          requires: [setup-docker-image]
+      - deploy-application:
+          requires: [create-cluster]
+      - smoke-test:
+          requires: [deploy-application]
+      - cleanup:
+          requires: [smoke-test]
