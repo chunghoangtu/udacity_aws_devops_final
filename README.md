@@ -1,5 +1,4 @@
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/chunghoangtu/udacity_aws_devops_final/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/chunghoangtu/udacity_aws_devops_final/tree/main)
-
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/chunghoangtu/udacity_aws_devops_final/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/chunghoangtu/udacity_aws_devops_final/tree/master)
 ## Github Repo: https://github.com/chunghoangtu/udacity_aws_devops_final
 
 ## pipeline Url: https://app.circleci.com/pipelines/github/chunghoangtu/udacity_aws_devops_final
