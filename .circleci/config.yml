@@ -77,11 +77,11 @@ jobs:
       - run: 
           name: Check and create cluster
           command: |
-            if eksctl get cluster  --name "tuchung-uda-final-v2" --region=us-east-1
+            if eksctl get cluster  --name "tuchung-uda-final-v3" --region=us-east-1
             then
               echo "Please choose another cluster name"
             else
-              eksctl create cluster --name "tuchung-uda-final-v2" --region=us-east-1 --zones=us-east-1a,us-east-1b,us-east-1c
+              eksctl create cluster --name "tuchung-uda-final-v3" --region=us-east-1 --zones=us-east-1a,us-east-1b,us-east-1c
             fi
 
   deploy:
@@ -98,7 +98,7 @@ jobs:
       - run:
           name: Connect kubectl
           command: |
-            aws eks update-kubeconfig --region us-east-1 --name tuchung-uda-final-v2
+            aws eks update-kubeconfig --region us-east-1 --name tuchung-uda-final-v3
       - run:
           name: Create deployment
           command: |
@@ -130,7 +130,8 @@ jobs:
           name: Run smoke test
           command: |
               cd .circleci            
-              export OUTPUT_IP=$(cat output_ip.txt)              
+              export OUTPUT_IP=$(cat output_ip.txt)    
+              echo ${OUTPUT_IP}           
               export OUTPUT="http://${OUTPUT_IP}/home"
               sleep 90s
               curl ${OUTPUT} > result.txt
@@ -155,22 +156,22 @@ jobs:
       - run:
           name: Connect kubectl
           command: |
-            aws eks update-kubeconfig --region us-east-1 --name tuchung-uda-final-v2
+            aws eks update-kubeconfig --region us-east-1 --name tuchung-uda-final-v3
       - run:
-          name: Cleanup
+          name: Cleanup things in kubectl
           command: |
-            # services
+            # Cleanup services
             kubectl get services | grep udacity-aws-devops-final > temp_old_services.txt            
             sed 's/ .*//' temp_old_services.txt > old_services.txt 
             SERVICE=udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment
             kubectl delete service $(cat old_services.txt | sed 's/'$SERVICE'//g' | sed -r '/^\s*$/d')
 
-            # deployment
+            # Cleanup deployment
             kubectl get deploy | grep udacity-aws-devops-final > temp_old_deploys.txt
             sed 's/ .*//' temp_old_deploys.txt > old_deploys.txt
             DEPLOYMENT=udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment
             kubectl delete deploy $(cat old_deploys.txt | sed 's/'$DEPLOYMENT'//g' | sed -r '/^\s*$/d')
-
+          
 workflows:
   my-workflow:
     jobs:
