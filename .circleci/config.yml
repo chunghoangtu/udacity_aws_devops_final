@@ -1,6 +1,6 @@
 version: 2.1
 jobs:
-  validate-source:
+  build-source:
     docker:
       - image: python:3.7.3-stretch
     working_directory: ~/repo
@@ -23,7 +23,6 @@ jobs:
             python3 -m venv venv
             . venv/bin/activate
             make install
-            # Install hadolint
             wget -O /bin/hadolint https://github.com/hadolint/hadolint/releases/download/v1.16.3/hadolint-Linux-x86_64 &&\
             chmod +x /bin/hadolint
       - save_cache:
@@ -41,7 +40,7 @@ jobs:
             . venv/bin/activate
             make test 
 
-  setup-docker-image:
+  setup-image:
     docker:
       - image: docker:17.05.0-ce-git
     steps:
@@ -85,7 +84,7 @@ jobs:
               eksctl create cluster --name "tuchung-uda-final" --region=us-east-1 --zones=us-east-1a,us-east-1b,us-east-1c
             fi
 
-  deploy-application:
+  deploy:
     docker:
       - image: amazon/aws-cli
     steps:
@@ -97,7 +96,7 @@ jobs:
             curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
             install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
       - run:
-          name: Connect kubectl to AWS
+          name: Connect kubectl
           command: |
             aws eks update-kubeconfig --region us-east-1 --name tuchung-uda-final
       - run:
@@ -105,24 +104,23 @@ jobs:
           command: |
             kubectl create deployment udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment --image="chunghoangtu/udacity-aws-devops-final:${CIRCLE_WORKFLOW_ID:0:7}" --port 80
       - run:
-          name: Expose deployment
+          name: Expose deployment at port 80
           command: |
             kubectl expose deployment udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment --type=LoadBalancer --port=80
-            # Waiting until its done
-            sleep 1m
+            sleep 60s
       - run:
           name: Extract IP address 
           command: |
             cd .circleci
             
-            ip_address=$(kubectl get services udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment --output jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-            echo $ip_address >> ip_address.txt
+            output_ip=$(kubectl get services udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment --output jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            echo $output_ip >> output_ip.txt
       - persist_to_workspace:
           root: ~/
           paths:
-            - project/.circleci/ip_address.txt
+            - project/.circleci/output_ip.txt
 
-  smoke-test:
+  test:
     docker:
       - image: python:3.7.3-stretch
     steps:
@@ -133,7 +131,7 @@ jobs:
           name: Run smoke test
           command: |
               cd .circleci            
-              export APP_IP=$(cat ip_address.txt)              
+              export APP_IP=$(cat output_ip.txt)              
               export APP_ENDPOINT="http://${APP_IP}/home"
               echo ${APP_ENDPOINT} 
               sleep 60s
@@ -157,19 +155,19 @@ jobs:
             curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
             install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
       - run:
-          name: Connect kubectl to AWS
+          name: Connect kubectl
           command: |
             aws eks update-kubeconfig --region us-east-1 --name tuchung-uda-final
       - run:
-          name: Cleanup things in kubectl
+          name: Cleanup
           command: |
-            # Cleanup services
+            # services
             kubectl get services | grep udacity-aws-devops-final > temp.txt            
             sed 's/ .*//' temp.txt > old_services.txt 
             SERVICE=udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment
             kubectl delete service $(cat old_services.txt | sed 's/'$SERVICE'//g' | sed -r '/^\s*$/d')
 
-            # Cleanup deployment
+            # deployment
             kubectl get deploy | grep udacity-aws-devops-final > temp.txt
             sed 's/ .*//' temp.txt > old_deploys.txt
             DEPLOYMENT=udacity-aws-devops-final-${CIRCLE_WORKFLOW_ID:0:7}-deployment
@@ -178,14 +176,14 @@ jobs:
 workflows:
   my-workflow:
     jobs:
-      - validate-source
-      - setup-docker-image:
-          requires: [validate-source]
+      - build-source
+      - setup-image:
+          requires: [build-source]
       - create-cluster:
-          requires: [setup-docker-image]
-      - deploy-application:
+          requires: [setup-image]
+      - deploy:
           requires: [create-cluster]
-      - smoke-test:
-          requires: [deploy-application]
+      - test:
+          requires: [deploy]
       - cleanup:
-          requires: [smoke-test]
+          requires: [test]
